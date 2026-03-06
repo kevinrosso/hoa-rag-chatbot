@@ -30,16 +30,23 @@ st.markdown("""
         .stChatMessage { border-radius: 10px; }
         .block-container { max-width: 800px; }
         footer { visibility: hidden; }
+            /* Targets the sidebar container */
+        [data-testid="stSidebar"] {
+            background-color: #545454; /* Example: Red background */
+            color: white; /* Example: White text color */
+        }
+            [alt=Logo] {
+            height: 3rem; /* Adjust this value (e.g., 2rem, 3rem, 100px) */
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.title("🏘️ Duck Bot (UCI Assistant)")
-st.caption(
-    "Ask questions about UCI policies, bylaws, and guidelines. "
-    "Answers are based on official Ulmstead Club documents."
-)
+st.title("duckBot. :duck:")
+st.caption("Ask questions about UCI policies, bylaws, and guidelines. ")
+st.caption("Answers are based on official Ulmstead Club documents.")
 st.divider()
+st.logo('images/logo.png')
 
 # ── Load ChromaDB (cached so it only loads once) ──────────────────────────────
 @st.cache_resource
@@ -88,6 +95,12 @@ if question := st.chat_input("Ask a question about UCI policies..."):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("About")
+    st.markdown("""
+    Examples
+    * Can a renter vote at HOA meetings?
+    * What happens if I build a deck without approval?
+    * "Who is eligible to select a boat slip?"
+    """)
     st.markdown("""
     This assistant searches the following official Ulmstead Club documents:
 
