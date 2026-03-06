@@ -97,9 +97,9 @@ with st.sidebar:
     st.header("About")
     st.markdown("""
     Examples
-    * Can a renter vote at HOA meetings?
+    * Can a renter vote at meetings?
     * What happens if I build a deck without approval?
-    * "Who is eligible to select a boat slip?"
+    * Who is eligible to select a boat slip?
     """)
     st.markdown("""
     This assistant searches the following official Ulmstead Club documents:
