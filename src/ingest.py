@@ -6,11 +6,15 @@ Reads all HOA documents, chunks them intelligently by their structure,
 and stores them in a local ChromaDB vector database.
 
 Run this once locally, and again on the server after deployment.
-Usage: python src/ingest.py
+
+Usage:
+  Local:  python src/ingest.py
+  AWS:    S3_BUCKET=ulmstead-hoa-docs python src/ingest.py
 """
 
 import os
 import re
+import tempfile
 import chromadb
 from chromadb.utils import embedding_functions
 from pypdf import PdfReader
@@ -20,12 +24,40 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
+# If S3_BUCKET is set in .env or environment, docs are downloaded from S3.
+# Otherwise falls back to local docs/ folder.
+S3_BUCKET = os.getenv("S3_BUCKET", "")
 DOCS_DIR = "docs"
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "hoa_documents"
 
+DOC_FILES = [
+    "bylaws.pdf",
+    "covenants.pdf",
+    "guidelines_architecture.pdf",
+    "guidelines_nautical.pdf",
+    "guidelines_beachpark.docx",
+    "policy_membership.docx",
+]
+
 # Uses ChromaDB's built-in sentence-transformers embeddings (free, local, no API key)
 EMBEDDING_FN = embedding_functions.DefaultEmbeddingFunction()
+
+
+# ── S3 Downloader ─────────────────────────────────────────────────────────────
+def download_docs_from_s3(bucket: str, tmp_dir: str):
+    """
+    Downloads all HOA documents from S3 into a local temp directory.
+    Requires EC2 IAM role with S3 read access — no credentials needed in code.
+    """
+    import boto3
+    s3 = boto3.client("s3")
+    print(f"Downloading documents from s3://{bucket}/")
+    for filename in DOC_FILES:
+        dest = os.path.join(tmp_dir, filename)
+        print(f"  ↓ {filename}")
+        s3.download_file(bucket, filename, dest)
+    print(f"  ✅ All documents downloaded to {tmp_dir}\n")
 
 
 # ── PDF Reader ────────────────────────────────────────────────────────────────
@@ -219,6 +251,16 @@ def chunk_by_paragraphs(text: str, source_name: str, chunk_size: int = 500) -> l
 def ingest_all():
     print("Starting HOA document ingestion...\n")
 
+    # ── Resolve docs directory (S3 or local) ──
+    tmp_dir = None
+    if S3_BUCKET:
+        tmp_dir = tempfile.mkdtemp()
+        download_docs_from_s3(S3_BUCKET, tmp_dir)
+        docs_dir = tmp_dir
+    else:
+        docs_dir = DOCS_DIR
+        print(f"Using local docs from '{docs_dir}/'\n")
+
     # Set up ChromaDB
     client = chromadb.PersistentClient(path=CHROMA_DIR)
 
@@ -238,42 +280,42 @@ def ingest_all():
 
     # ── bylaws.pdf ──
     print("Processing bylaws.pdf...")
-    text = read_pdf(os.path.join(DOCS_DIR, "bylaws.pdf"))
+    text = read_pdf(os.path.join(docs_dir, "bylaws.pdf"))
     chunks = chunk_bylaws(text)
     all_chunks.extend(chunks)
     print(f"  → {len(chunks)} chunks from Bylaws")
 
     # ── covenants.pdf ──
     print("Processing covenants.pdf...")
-    text = read_pdf(os.path.join(DOCS_DIR, "covenants.pdf"))
+    text = read_pdf(os.path.join(docs_dir, "covenants.pdf"))
     chunks = chunk_by_paragraphs(text, "Covenants")
     all_chunks.extend(chunks)
     print(f"  → {len(chunks)} chunks from Covenants")
 
     # ── guidelines_architecture.pdf ──
     print("Processing guidelines_architecture.pdf...")
-    text = read_pdf(os.path.join(DOCS_DIR, "guidelines_architecture.pdf"))
+    text = read_pdf(os.path.join(docs_dir, "guidelines_architecture.pdf"))
     chunks = chunk_by_numbered_sections(text, "Architecture Guidelines")
     all_chunks.extend(chunks)
     print(f"  → {len(chunks)} chunks from Architecture Guidelines")
 
     # ── guidelines_nautical.pdf ──
     print("Processing guidelines_nautical.pdf...")
-    text = read_pdf(os.path.join(DOCS_DIR, "guidelines_nautical.pdf"))
+    text = read_pdf(os.path.join(docs_dir, "guidelines_nautical.pdf"))
     chunks = chunk_by_numbered_sections(text, "Nautical Guidelines")
     all_chunks.extend(chunks)
     print(f"  → {len(chunks)} chunks from Nautical Guidelines")
 
     # ── guidelines_beachpark.docx ──
     print("Processing guidelines_beachpark.docx...")
-    paragraphs = read_docx(os.path.join(DOCS_DIR, "guidelines_beachpark.docx"))
+    paragraphs = read_docx(os.path.join(docs_dir, "guidelines_beachpark.docx"))
     chunks = chunk_docx_by_bold_headers(paragraphs, "Beach Park Guidelines")
     all_chunks.extend(chunks)
     print(f"  → {len(chunks)} chunks from Beach Park Guidelines")
 
     # ── policy_membership.docx ──
     print("Processing policy_membership.docx...")
-    paragraphs = read_docx(os.path.join(DOCS_DIR, "policy_membership.docx"))
+    paragraphs = read_docx(os.path.join(docs_dir, "policy_membership.docx"))
     chunks = chunk_docx_by_bold_headers(paragraphs, "Membership Policy")
     all_chunks.extend(chunks)
     print(f"  → {len(chunks)} chunks from Membership Policy")
@@ -296,6 +338,12 @@ def ingest_all():
     print(f"\n✅ Ingestion complete!")
     print(f"   {len(all_chunks)} chunks stored in '{CHROMA_DIR}/'")
     print(f"   Ready to query with query.py")
+
+    # ── Clean up temp dir if S3 was used ──
+    if tmp_dir:
+        import shutil
+        shutil.rmtree(tmp_dir)
+        print(f"   Temp files cleaned up.")
 
 
 if __name__ == "__main__":
