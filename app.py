@@ -15,7 +15,7 @@ import os
 # Allow imports from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from query import load_collection, answer_question
+from query import load_collection, answer_question, get_sources
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -84,10 +84,11 @@ if question := st.chat_input("Ask a question about UCI policies..."):
     with st.chat_message("user"):
         st.markdown(question)
 
-    # Generate and show answer
+    # Generate and show answer — pass recent history excluding the current question
     with st.chat_message("assistant"):
         with st.spinner("Searching documents..."):
-            answer = answer_question(question, collection)
+            history = st.session_state.messages[:-1]  # everything before the current question
+            answer = answer_question(question, collection, history=history)
         st.markdown(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
@@ -101,32 +102,36 @@ with st.sidebar:
     * What happens if I build a deck without approval?
     * Who is eligible to select a boat slip?
     """)
-    st.markdown("""
-    This assistant searches the following official Ulmstead Club documents:
 
-    - 📄 Bylaws
-    - 📄 Covenants
-    - 📄 Architecture Guidelines
-    - ⛵ Nautical Guidelines
-    - 🏖️ Beach Park Guidelines
-    - 👤 Membership Policy
+    st.markdown("**Knowledge base sources:**")
+    sources = get_sources(collection)
+    if sources:
+        for src in sources:
+            st.markdown(f"- {src}")
+    else:
+        st.markdown("_No sources loaded._")
 
-    Answers include citations to the relevant article or section where possible.
-    """)
+    st.markdown("Answers include citations to the relevant article or section where possible.")
 
     st.divider()
     st.markdown(
         "For official decisions or disputes, please contact the HOA board directly."
     )
 
-    if st.button("🗑️ Clear Chat"):
-        st.session_state.messages = [
-            {
-                "role": "assistant",
-                "content": (
-                    "Hi! I can answer questions about Ulmstead Club policies, "
-                    "bylaws, and guidelines. What would you like to know?"
-                )
-            }
-        ]
-        st.rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear Chat"):
+            st.session_state.messages = [
+                {
+                    "role": "assistant",
+                    "content": (
+                        "Hi! I can answer questions about Ulmstead Club policies, "
+                        "bylaws, and guidelines. What would you like to know?"
+                    )
+                }
+            ]
+            st.rerun()
+    with col2:
+        if st.button("🔄 Reload KB"):
+            st.cache_resource.clear()
+            st.rerun()
